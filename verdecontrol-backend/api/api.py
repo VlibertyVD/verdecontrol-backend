@@ -11,7 +11,6 @@ from ninja.security import HttpBearer
 api = NinjaAPI(title="VerdeControl API", version="1.0.0")
 User = get_user_model()
 
-# 1. Definimos qué datos esperamos recibir del frontend
 class RegisterSchema(Schema):
     full_name: str
     company_email: str
@@ -19,11 +18,9 @@ class RegisterSchema(Schema):
     role: str
     password: str
 
-# 2. Creamos el endpoint que procesa el registro
 @api.post("/register")
 def register_user(request, payload: RegisterSchema):
     try:
-        # Usamos transaction.atomic para asegurar que si algo falla, no se guarde a medias
         with transaction.atomic():
             # Creamos la empresa primero
             company = Company.objects.create(
@@ -85,12 +82,10 @@ def get_timers(request):
         })
     return result
 
-# 1. Esquema para recibir los datos de login
 class LoginSchema(Schema):
     email: str
     password: str
 
-# 2. Endpoint de validación
 @api.post("/login")
 def login_user(request, payload: LoginSchema):
     user = authenticate(request, username=payload.email, password=payload.password)
@@ -117,7 +112,6 @@ class AuthBearer(HttpBearer):
         except (BadSignature, SignatureExpired):
             return None # Esto lanza un error 401 Unauthorized automáticamente
 
-# Esquema para el Mapa
 class MapZoneOut(Schema):
     id: int
     name: str
@@ -142,7 +136,7 @@ def get_map_zones(request):
         })
     return result
 
-# Esquemas para la vista de Empresas
+
 class CompanyListOut(Schema):
     id: int
     name: str
@@ -210,13 +204,12 @@ def create_company(request, payload: CompanyCreateIn):
     return company
 
 
-# Esquema de entrada para el área verde
 class GreenZoneCreateIn(Schema):
     name: str
     company_id: int
     polygon_coordinates: list
 
-# Endpoint POST para guardar el polígono
+
 @api.post("/green-zones", auth=AuthBearer())
 def create_green_zone(request, payload: GreenZoneCreateIn):
     # Verificamos que la compañía exista
@@ -226,17 +219,15 @@ def create_green_zone(request, payload: GreenZoneCreateIn):
         name=payload.name,
         company=company,
         polygon_coordinates=payload.polygon_coordinates,
-        # Dejamos lat y long vacíos o calculamos el centro luego
         timer_status='Scheduled' 
     )
     return {"id": zone.id, "name": zone.name}
 
-# 1. ESQUEMAS ACTUALIZADOS
 class GreenZoneCreateIn(Schema):
     name: str
     company_id: int
     polygon_coordinates: list
-    area_size: str # <-- Nuevo: recibiremos el área calculada
+    area_size: str 
 
 class MapZoneOut(Schema):
     id: int
@@ -249,7 +240,6 @@ class MapZoneOut(Schema):
 class ZoneFrequencyUpdateIn(Schema):
     reminder_frequency: str
 
-# 2. ENDPOINTS
 @api.post("/green-zones", auth=AuthBearer())
 def create_green_zone(request, payload: GreenZoneCreateIn):
     company = Company.objects.get(id=payload.company_id)
@@ -257,7 +247,7 @@ def create_green_zone(request, payload: GreenZoneCreateIn):
         name=payload.name,
         company=company,
         polygon_coordinates=payload.polygon_coordinates,
-        area_size=payload.area_size,  # <-- Guardamos el área
+        area_size=payload.area_size,  # <-- Guardamos el áre
         timer_status='Scheduled'
     )
     return {"id": zone.id, "name": zone.name}
