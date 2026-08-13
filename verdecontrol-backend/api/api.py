@@ -116,3 +116,161 @@ class AuthBearer(HttpBearer):
             return data.get("user_id") 
         except (BadSignature, SignatureExpired):
             return None # Esto lanza un error 401 Unauthorized automáticamente
+
+# Esquema para el Mapa
+class MapZoneOut(Schema):
+    id: int
+    name: str
+    latitude: float
+    longitude: float
+    timer_status: str
+
+# Endpoint exclusivo para cargar los pines en el mapa
+@api.get("/map-zones", response=List[MapZoneOut], auth=AuthBearer())
+def get_map_zones(request):
+    # Filtramos solo las áreas que tengan coordenadas guardadas
+    zones = GreenZone.objects.filter(latitude__isnull=False, longitude__isnull=False)
+    
+    result = []
+    for zone in zones:
+        result.append({
+            "id": zone.id,
+            "name": zone.name,
+            "latitude": zone.latitude,
+            "longitude": zone.longitude,
+            "timer_status": zone.timer_status
+        })
+    return result
+
+# Esquemas para la vista de Empresas
+class CompanyListOut(Schema):
+    id: int
+    name: str
+    zone: str
+    company_code: str
+
+class PersonnelOut(Schema):
+    id: int
+    full_name: str
+    role: str
+    avatar_url: str | None
+
+class GreenZoneBasicOut(Schema):
+    id: int
+    name: str
+    area_size: str
+    image_url: str | None
+    current_metric: str
+    needs_attention: bool
+
+class CompanyDetailOut(Schema):
+    id: int
+    name: str
+    company_code: str
+    status: str
+    personnel: List[PersonnelOut]
+    green_zones: List[GreenZoneBasicOut]
+
+@api.get("/companies", response=List[CompanyListOut], auth=AuthBearer())
+def list_companies(request):
+    return Company.objects.filter(user_id=request.auth)
+
+@api.get("/companies/{company_id}", response=CompanyDetailOut, auth=AuthBearer())
+def get_company_detail(request, company_id: int):
+    company = Company.objects.get(id=company_id)
+    return company
+
+class CompanyCreateIn(Schema):
+    name: str
+    email: str
+    company_code: str = 'COMP-0000'
+    zone: str = 'Zone North'
+
+@api.get("/companies", response=List[CompanyListOut], auth=AuthBearer())
+def list_companies(request):
+
+    user_id = request.auth
+    
+    companies = Company.objects.filter(
+        Q(user_id=user_id) | Q(operators__id=user_id)
+    ).distinct()
+    
+    return companies
+
+@api.post("/companies", response=CompanyListOut, auth=AuthBearer())
+def create_company(request, payload: CompanyCreateIn):
+
+    company = Company.objects.create(
+        name=payload.name,
+        email=payload.email,
+        company_code=payload.company_code,
+        zone=payload.zone,
+        user_id=request.auth 
+    )
+    return company
+
+
+# Esquema de entrada para el área verde
+class GreenZoneCreateIn(Schema):
+    name: str
+    company_id: int
+    polygon_coordinates: list
+
+# Endpoint POST para guardar el polígono
+@api.post("/green-zones", auth=AuthBearer())
+def create_green_zone(request, payload: GreenZoneCreateIn):
+    # Verificamos que la compañía exista
+    company = Company.objects.get(id=payload.company_id)
+    
+    zone = GreenZone.objects.create(
+        name=payload.name,
+        company=company,
+        polygon_coordinates=payload.polygon_coordinates,
+        # Dejamos lat y long vacíos o calculamos el centro luego
+        timer_status='Scheduled' 
+    )
+    return {"id": zone.id, "name": zone.name}
+
+# 1. ESQUEMAS ACTUALIZADOS
+class GreenZoneCreateIn(Schema):
+    name: str
+    company_id: int
+    polygon_coordinates: list
+    area_size: str # <-- Nuevo: recibiremos el área calculada
+
+class MapZoneOut(Schema):
+    id: int
+    name: str
+    polygon_coordinates: list | None = None
+    reminder_frequency: str | None = None
+    area_size: str | None = None
+    timer_status: str | None = None
+
+class ZoneFrequencyUpdateIn(Schema):
+    reminder_frequency: str
+
+# 2. ENDPOINTS
+@api.post("/green-zones", auth=AuthBearer())
+def create_green_zone(request, payload: GreenZoneCreateIn):
+    company = Company.objects.get(id=payload.company_id)
+    zone = GreenZone.objects.create(
+        name=payload.name,
+        company=company,
+        polygon_coordinates=payload.polygon_coordinates,
+        area_size=payload.area_size,  # <-- Guardamos el área
+        timer_status='Scheduled'
+    )
+    return {"id": zone.id, "name": zone.name}
+
+@api.get("/map-zones", response=List[MapZoneOut], auth=AuthBearer())
+def get_map_zones(request):
+    # Quitamos el filtro porque SQLite se confunde con los JSON.
+    # Enviamos TODO y dejamos que el frontend decida qué dibujar.
+    return GreenZone.objects.all()
+
+@api.patch("/green-zones/{zone_id}/frequency", auth=AuthBearer())
+def update_frequency(request, zone_id: int, payload: ZoneFrequencyUpdateIn):
+    zone = GreenZone.objects.get(id=zone_id)
+    zone.reminder_frequency = payload.reminder_frequency
+    zone.save()
+    return {"success": True}

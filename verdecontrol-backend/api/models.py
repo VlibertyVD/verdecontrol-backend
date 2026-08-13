@@ -11,7 +11,7 @@ class User(AbstractUser):
     role = models.CharField(
         max_length=20, 
         choices=ROLE_CHOICES, 
-        default='operator'
+        default='manager'
     )
         
     def __str__(self):
@@ -22,7 +22,12 @@ class Company(models.Model):
     name = models.CharField(max_length=255)
     email = models.EmailField(unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
-
+    company_code = models.CharField(max_length=20, default='COMP-0000')
+    zone = models.CharField(max_length=100, default='Zone North')
+    status = models.CharField(max_length=50, default='Up to date')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_companies', null=True, blank=True)
+    
+    operators = models.ManyToManyField(User, related_name='operated_companies', blank=True)
     def __str__(self):
         return self.name
 
@@ -41,6 +46,11 @@ class GreenZone(models.Model):
     timer_status = models.CharField(max_length=50, default='Scheduled') # Ej: "Needs cutting", "Scheduled"
     next_maintenance = models.DateField(null=True, blank=True)
     
+    area_size = models.CharField(max_length=50, default='100 m²')
+    image_url = models.URLField(blank=True, null=True)
+    current_metric = models.CharField(max_length=50, default='85% Humidity')
+    polygon_coordinates = models.JSONField(null=True, blank=True)
+    
     FREQUENCY_CHOICES = (
         ('Weekly', 'Weekly'),
         ('Fortnightly', 'Fortnightly'),
@@ -50,3 +60,13 @@ class GreenZone(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.company.name}"
+
+class Personnel(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='personnel')
+    full_name = models.CharField(max_length=255)
+    role = models.CharField(max_length=100)
+    email = models.EmailField()
+    avatar_url = models.URLField(blank=True, null=True)
+
+    def __str__(self):
+        return self.full_name
