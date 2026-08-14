@@ -120,7 +120,7 @@ class MapZoneOut(Schema):
     timer_status: str
 
 # Endpoint exclusivo para cargar los pines en el mapa
-@api.get("/map-zones", response=List[MapZoneOut], auth=AuthBearer())
+@api.get("/map-zones2", response=List[MapZoneOut], auth=AuthBearer())
 def get_map_zones(request):
     # Filtramos solo las áreas que tengan coordenadas guardadas
     zones = GreenZone.objects.filter(latitude__isnull=False, longitude__isnull=False)
@@ -203,26 +203,6 @@ def create_company(request, payload: CompanyCreateIn):
     )
     return company
 
-
-class GreenZoneCreateIn(Schema):
-    name: str
-    company_id: int
-    polygon_coordinates: list
-
-
-@api.post("/green-zones", auth=AuthBearer())
-def create_green_zone(request, payload: GreenZoneCreateIn):
-    # Verificamos que la compañía exista
-    company = Company.objects.get(id=payload.company_id)
-    
-    zone = GreenZone.objects.create(
-        name=payload.name,
-        company=company,
-        polygon_coordinates=payload.polygon_coordinates,
-        timer_status='Scheduled' 
-    )
-    return {"id": zone.id, "name": zone.name}
-
 class GreenZoneCreateIn(Schema):
     name: str
     company_id: int
@@ -254,9 +234,16 @@ def create_green_zone(request, payload: GreenZoneCreateIn):
 
 @api.get("/map-zones", response=List[MapZoneOut], auth=AuthBearer())
 def get_map_zones(request):
-    # Quitamos el filtro porque SQLite se confunde con los JSON.
-    # Enviamos TODO y dejamos que el frontend decida qué dibujar.
-    return GreenZone.objects.all()
+    # 1. Obtenemos al usuario que hizo la petición. 
+    # (Si tu AuthBearer devuelve el ID en request.auth, buscamos el usuario así):
+    user = User.objects.get(id=request.auth)
+    
+    if not user.use_this_company:
+        return [] 
+        
+    zones = GreenZone.objects.filter(company=user.use_this_company)
+    
+    return zones
 
 @api.patch("/green-zones/{zone_id}/frequency", auth=AuthBearer())
 def update_frequency(request, zone_id: int, payload: ZoneFrequencyUpdateIn):
@@ -264,3 +251,18 @@ def update_frequency(request, zone_id: int, payload: ZoneFrequencyUpdateIn):
     zone.reminder_frequency = payload.reminder_frequency
     zone.save()
     return {"success": True}
+
+
+class ActiveCompanyUpdateIn(Schema):
+    company_id: int
+
+@api.patch("/users/active-company", auth=AuthBearer())
+def set_active_company(request, payload: ActiveCompanyUpdateIn):
+    user = User.objects.get(id=request.auth)
+    
+    company = Company.objects.get(id=payload.company_id)
+    
+    user.use_this_company = company
+    user.save()
+    
+    return {"success": True, "active_company_id": company.id}

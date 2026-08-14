@@ -13,7 +13,15 @@ class User(AbstractUser):
         choices=ROLE_CHOICES, 
         default='manager'
     )
-        
+    
+    use_this_company = models.ForeignKey(
+        'Company', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='active_users'
+    )
+
     def __str__(self):
         return self.username
 
