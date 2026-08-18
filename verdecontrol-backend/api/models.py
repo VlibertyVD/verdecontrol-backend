@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from auditlog.registry import auditlog
 
 class User(AbstractUser):
     
@@ -78,3 +79,6 @@ class Personnel(models.Model):
 
     def __str__(self):
         return self.full_name
+
+auditlog.register(Company)
+auditlog.register(GreenZone)

@@ -7,6 +7,7 @@ from typing import List
 from django.contrib.auth import authenticate
 from django.core.signing import dumps, loads, BadSignature, SignatureExpired
 from ninja.security import HttpBearer
+from auditlog.context import set_actor
 
 api = NinjaAPI(title="VerdeControl API", version="1.0.0")
 User = get_user_model()
@@ -222,14 +223,22 @@ class ZoneFrequencyUpdateIn(Schema):
 
 @api.post("/green-zones", auth=AuthBearer())
 def create_green_zone(request, payload: GreenZoneCreateIn):
+    
+    # Buscamos al usuario real
+    user = User.objects.get(id=request.auth)
     company = Company.objects.get(id=payload.company_id)
-    zone = GreenZone.objects.create(
-        name=payload.name,
-        company=company,
-        polygon_coordinates=payload.polygon_coordinates,
-        area_size=payload.area_size,  # <-- Guardamos el áre
-        timer_status='Scheduled'
-    )
+    
+    # 2. ENVOLVEMOS LA CREACIÓN CON set_actor
+    # Todo lo que se cree o modifique dentro de este "with" quedará a nombre de este usuario
+    with set_actor(actor=user):
+        zone = GreenZone.objects.create(
+            name=payload.name,
+            company=company,
+            polygon_coordinates=payload.polygon_coordinates,
+            area_size=payload.area_size, 
+            timer_status='Scheduled'
+        )
+        
     return {"id": zone.id, "name": zone.name}
 
 @api.get("/map-zones", response=List[MapZoneOut], auth=AuthBearer())
